@@ -1,0 +1,27 @@
+name: cilgin_kafalar
+description: "ÇILGIN KAFALAR! — aile ve arkadaş parti oyunu (Flutter + Flame)."
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.7
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flame: ^1.38.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  fonts:
+    - family: Baloo2
+      fonts:
+        - asset: assets/fonts/Baloo2.ttf
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/Nunito.ttf

@@ -1,0 +1,16 @@
+# ÇILGIN KAFALAR! web derlemesi (Flutter) için sunucu ayarları
+AddType application/wasm .wasm
+AddType application/manifest+json .webmanifest
+Options -Indexes
+
+<IfModule mod_headers.c>
+  # Giriş dosyaları her zaman yeniden doğrulansın; yeni sürüm hemen görünsün
+  <FilesMatch "^(index\.html|flutter_bootstrap\.js|flutter_service_worker\.js|version\.json|manifest\.json)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "\.(wasm|ttf|otf|png|svg)$">
+    Header set Cache-Control "public, max-age=604800"
+  </FilesMatch>
+  Header set X-Content-Type-Options "nosniff"
+  Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>
