@@ -919,7 +919,7 @@ class SettingsScreen extends StatelessWidget {
           h('Prototip'),
           group([link('Test paneli: ekranlara git', () => showTestPanel(context))]),
           const SizedBox(height: 10),
-          Center(child: Text('Sürüm 0.1 prototip', style: T.body(12, color: K.lilac))),
+          Center(child: Text(kSurumEtiketi, style: T.body(12, color: K.lilac))),
         ]),
       ),
     ]);

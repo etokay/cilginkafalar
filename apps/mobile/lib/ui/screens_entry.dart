@@ -49,7 +49,7 @@ class SplashScreen extends StatelessWidget {
             child: Text(status, style: T.body(15, color: K.lilac, w: 800)),
           ),
           const SizedBox(height: 4),
-          Text('Sürüm 0.1 prototip', style: T.body(12, color: K.lilac.withValues(alpha: .7))),
+          Text(kSurumEtiketi, style: T.body(12, color: K.lilac.withValues(alpha: .7))),
         ],
         const SizedBox(height: 8),
       ],
@@ -141,6 +141,7 @@ class MenuScreen extends StatelessWidget {
             LinkText('Gizlilik', onTap: () => showPrivacy(context)),
           ],
         ),
+        Text(kSurumEtiketi, style: T.body(11, color: K.lilac.withValues(alpha: .6))),
       ],
     );
   }

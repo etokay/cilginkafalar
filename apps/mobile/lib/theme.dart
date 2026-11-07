@@ -51,3 +51,7 @@ ThemeData buildTheme() => ThemeData(
       splashFactory: NoSplash.splashFactory,
       highlightColor: Colors.transparent,
     );
+
+/// Derleme sürümü (tool/build_web.sh git kısa özetini --dart-define=SURUM ile verir).
+const kSurum = String.fromEnvironment('SURUM', defaultValue: 'yerel');
+const kSurumEtiketi = 'Sürüm 0.1 · $kSurum';

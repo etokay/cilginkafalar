@@ -3,7 +3,8 @@
 # böylece tarayıcılar eski oyun dosyasını önbellekten kullanamaz.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-flutter build web --release --no-web-resources-cdn --pwa-strategy=none --no-wasm-dry-run
+SURUM=$(git rev-parse --short HEAD 2>/dev/null || echo yerel)
+flutter build web --release --no-web-resources-cdn --pwa-strategy=none --no-wasm-dry-run --dart-define=SURUM="$SURUM"
 cd build/web
 HASH=$(sha256sum main.dart.js | cut -c1-10)
 NEW="main.dart.$HASH.js"
