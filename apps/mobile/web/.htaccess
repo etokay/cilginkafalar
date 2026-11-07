@@ -4,8 +4,8 @@ AddType application/manifest+json .webmanifest
 Options -Indexes
 
 <IfModule mod_headers.c>
-  # Giriş dosyaları her zaman yeniden doğrulansın; yeni sürüm hemen görünsün
-  <FilesMatch "^(index\.html|flutter_bootstrap\.js|flutter_service_worker\.js|version\.json|manifest\.json)$">
+  # Adı sürümle değişmeyen dosyalar her açılışta yeniden doğrulansın; yeni sürüm hemen görünsün
+  <FilesMatch "^(index\.html|flutter_bootstrap\.js|flutter_service_worker\.js|flutter\.js|main\.dart\.js|main\.dart\.wasm|main\.dart\.mjs|version\.json|manifest\.json|AssetManifest.*|FontManifest\.json|NOTICES)$">
     Header set Cache-Control "no-cache"
   </FilesMatch>
   <FilesMatch "\.(wasm|ttf|otf|png|svg)$">
