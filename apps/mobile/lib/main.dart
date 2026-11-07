@@ -213,7 +213,8 @@ class _GameShellState extends State<GameShell> {
         Positioned.fill(
           child: SafeArea(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
+              // Oda ekranında klavye kenardan kenara uzansın diye yan boşluk dar; ekran kendi içeriğine boşluk verir.
+              padding: EdgeInsets.fromLTRB(g.screen == Scr.room ? 6 : 20, 4, g.screen == Scr.room ? 6 : 20, 12),
               child: AnimatedSwitcher(
                 duration: Duration(milliseconds: reduce ? 1 : 320),
                 switchInCurve: Curves.easeOutBack,

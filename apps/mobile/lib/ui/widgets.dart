@@ -470,7 +470,12 @@ class Avatar extends StatelessWidget {
 }
 
 /// Oyun içi klavye. Türkçe Q düzeni (takma ad) ve karışmayan karakterli kod düzeni.
-/// Tuşlar parmak değdiği anda tepki verir; basılan harf tuşun üstünde büyük bir balonla görünür.
+///
+/// Dokunma, telefon klavyelerindeki gibi çalışır:
+/// - Dokunuş en yakın tuşa gider (tuş arası boşluklar ölü alan değildir).
+/// - Parmak hedefin biraz altına değdiği için dokunma noktası yukarı doğru düzeltilir.
+/// - Harf parmak kalkınca yazılır; basılıyken parmak kaydırılırsa altındaki tuşa geçilir.
+/// - Hızlı iki parmakla yazımda yeni tuşa basılınca önceki harf hemen yazılır, harf kaybolmaz.
 /// `⌫` silme, ` ` boşluk tuşudur.
 class GameKeyboard extends StatefulWidget {
   final List<String> rows;
@@ -485,14 +490,17 @@ class GameKeyboard extends StatefulWidget {
   /// Oda kodu: 0/O, 1/I/L karışmasın diye bu karakterler yok.
   static const roomCode = ['23456789', 'QWERTYUP', 'ASDFGHJK', 'ZXCVBNM⌫'];
 
+  static const keyH = 50.0, rowGap = 8.0, gap = 4.0;
+  static double heightFor(int rowCount) => rowCount * (keyH + rowGap) - rowGap;
+
   @override
   State<GameKeyboard> createState() => _GameKeyboardState();
 }
 
 class _GameKeyboardState extends State<GameKeyboard> {
-  String? _down;
-  Rect? _downRect;
-  static const gap = 5.0, keyH = 48.0, rowGap = 8.0;
+  final _active = <int, int>{}; // parmak (pointer) → tuş indeksi
+  List<(String, Rect)> _keys = const [];
+  static const _fingerLift = 7.0; // dokunma noktasını bu kadar yukarı al
 
   void _fire(String k) {
     tapFeedback(context);
@@ -505,40 +513,75 @@ class _GameKeyboardState extends State<GameKeyboard> {
     }
   }
 
-  Widget _key(String k, Rect r) {
+  int? _keyAt(Offset p) {
+    final q = p.translate(0, -_fingerLift);
+    int? best;
+    var bestD = double.infinity;
+    for (var i = 0; i < _keys.length; i++) {
+      final r = _keys[i].$2;
+      final dx = q.dx < r.left ? r.left - q.dx : (q.dx > r.right ? q.dx - r.right : 0.0);
+      final dy = q.dy < r.top ? r.top - q.dy : (q.dy > r.bottom ? q.dy - r.bottom : 0.0);
+      final d = dx * dx + dy * dy;
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    }
+    return bestD <= 24 * 24 ? best : null;
+  }
+
+  void _down(PointerDownEvent e) {
+    final i = _keyAt(e.localPosition);
+    if (i == null) return;
+    // Önceki parmak hâlâ basılıysa onun harfini şimdi yaz (hızlı yazımda kayıp olmasın).
+    for (final k in _active.values) {
+      _fire(_keys[k].$1);
+    }
+    _active
+      ..clear()
+      ..[e.pointer] = i;
+    setState(() {});
+  }
+
+  void _move(PointerMoveEvent e) {
+    if (!_active.containsKey(e.pointer)) return;
+    final i = _keyAt(e.localPosition);
+    if (i != null && i != _active[e.pointer]) setState(() => _active[e.pointer] = i);
+  }
+
+  void _up(PointerUpEvent e) {
+    final i = _active.remove(e.pointer);
+    if (i != null) _fire(_keys[i].$1);
+    setState(() {});
+  }
+
+  void _cancel(PointerCancelEvent e) => setState(() => _active.remove(e.pointer));
+
+  Widget _key(int idx) {
+    final (k, r) = _keys[idx];
     final isBack = k == '⌫', isSpace = k == ' ';
-    final down = _down == k && _downRect == r;
+    final down = _active.containsValue(idx);
     final face = isBack ? K.pink : isSpace ? const Color(0xFFB9A6F2) : const Color(0xFFF2ECFF);
     return Positioned.fromRect(
       rect: r,
       child: Semantics(
         button: true,
         label: isBack ? 'Sil' : isSpace ? 'Boşluk' : k,
-        child: Listener(
-          onPointerDown: (_) => setState(() {
-            _down = k;
-            _downRect = r;
-          }),
-          onPointerUp: (_) {
-            if (_down == k) _fire(k);
-            setState(() => _down = null);
-          },
-          onPointerCancel: (_) => setState(() => _down = null),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 60),
-            margin: EdgeInsets.only(top: down ? 3 : 0, bottom: down ? 0 : 3),
-            decoration: BoxDecoration(
-              color: down ? Color.lerp(face, K.violet5, .25) : face,
-              borderRadius: BorderRadius.circular(10),
-              boxShadow: [BoxShadow(color: K.edge(face), offset: Offset(0, down ? 0 : 3))],
-            ),
-            alignment: Alignment.center,
-            child: isBack
-                ? const GameIcon(GI.backspace, color: K.ink, size: 22)
-                : isSpace
-                    ? Text('boşluk', style: T.body(15, color: K.ink, w: 900))
-                    : FittedBox(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: Text(k, style: T.display(21, color: K.ink)))),
+        onTap: () => _fire(k),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 50),
+          margin: EdgeInsets.only(top: down ? 3 : 0, bottom: down ? 0 : 3),
+          decoration: BoxDecoration(
+            color: down ? Color.lerp(face, K.violet5, .3) : face,
+            borderRadius: BorderRadius.circular(10),
+            boxShadow: [BoxShadow(color: K.edge(face), offset: Offset(0, down ? 0 : 3))],
           ),
+          alignment: Alignment.center,
+          child: isBack
+              ? const GameIcon(GI.backspace, color: K.ink, size: 22)
+              : isSpace
+                  ? Text('boşluk', style: T.body(15, color: K.ink, w: 900))
+                  : FittedBox(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: Text(k, style: T.display(22, color: K.ink)))),
         ),
       ),
     );
@@ -546,54 +589,62 @@ class _GameKeyboardState extends State<GameKeyboard> {
 
   @override
   Widget build(BuildContext context) {
+    const gap = GameKeyboard.gap, keyH = GameKeyboard.keyH, rowGap = GameKeyboard.rowGap;
     final rows = [...widget.rows, if (widget.onSpace != null) ' '];
     return LayoutBuilder(builder: (_, c) {
       final W = c.maxWidth;
       final maxKeys = widget.rows.map((r) => r.characters.length).reduce((a, b) => a > b ? a : b);
       final kw = (W - gap * (maxKeys - 1)) / maxKeys;
-      final keys = <Widget>[];
+      final keys = <(String, Rect)>[];
       for (var ri = 0; ri < rows.length; ri++) {
         final chars = rows[ri].characters.toList();
         final y = ri * (keyH + rowGap);
         if (chars.length == 1 && chars.first == ' ') {
           final w = kw * 6 + gap * 5;
-          keys.add(_key(' ', Rect.fromLTWH((W - w) / 2, y, w, keyH)));
+          keys.add((' ', Rect.fromLTWH((W - w) / 2, y, w, keyH)));
           continue;
         }
-        // silme tuşu 1,5 genişlikte
         final units = chars.fold<double>(0, (s, k) => s + (k == '⌫' ? 1.5 : 1));
         final rowW = units * kw + gap * (chars.length - 1);
         var x = (W - rowW) / 2;
         for (final k in chars) {
           final w = k == '⌫' ? kw * 1.5 : kw;
-          keys.add(_key(k, Rect.fromLTWH(x, y, w, keyH)));
+          keys.add((k, Rect.fromLTWH(x, y, w, keyH)));
           x += w + gap;
         }
       }
-      final h = rows.length * (keyH + rowGap) - rowGap;
-      return SizedBox(
-        height: h,
-        child: Stack(clipBehavior: Clip.none, children: [
-          ...keys,
-          if (_down != null && _downRect != null && _down != '⌫' && _down != ' ')
-            Positioned(
-              left: _downRect!.center.dx - 30,
-              top: _downRect!.top - 66,
-              child: IgnorePointer(
-                child: Container(
-                  width: 60,
-                  height: 62,
-                  decoration: BoxDecoration(
-                    color: K.paper,
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: const [BoxShadow(color: Color(0xFF3B2794), offset: Offset(0, 4)), BoxShadow(color: Color(0x66080420), blurRadius: 12)],
+      _keys = keys;
+      final pressed = _active.values.map((i) => _keys[i]).where((e) => e.$1 != '⌫' && e.$1 != ' ').toList();
+      return Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: _down,
+        onPointerMove: _move,
+        onPointerUp: _up,
+        onPointerCancel: _cancel,
+        child: SizedBox(
+          height: GameKeyboard.heightFor(rows.length),
+          child: Stack(clipBehavior: Clip.none, children: [
+            for (var i = 0; i < keys.length; i++) _key(i),
+            for (final (k, r) in pressed)
+              Positioned(
+                left: (r.center.dx - 30).clamp(0, W - 60),
+                top: r.top - 68,
+                child: IgnorePointer(
+                  child: Container(
+                    width: 60,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: K.paper,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [BoxShadow(color: Color(0xFF3B2794), offset: Offset(0, 4)), BoxShadow(color: Color(0x66080420), blurRadius: 12)],
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(k, style: T.display(36, color: K.ink)),
                   ),
-                  alignment: Alignment.center,
-                  child: Text(_down!, style: T.display(34, color: K.ink)),
                 ),
               ),
-            ),
-        ]),
+          ]),
+        ),
       );
     });
   }
