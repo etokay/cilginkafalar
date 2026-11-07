@@ -3,7 +3,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../art/mascot_painter.dart';
+import '../art/mascot.dart';
 import '../art/shapes.dart';
 import '../data/content.dart';
 import '../game/engine.dart';
@@ -370,9 +370,9 @@ class _RingPainter extends CustomPainter {
   bool shouldRepaint(_RingPainter o) => o.f != f || o.low != low;
 }
 
-/// Harfleri tek tek dalgalanan, katmanlı (extrude) logo.
+/// Oyun logosu (GPT Image ile üretildi). Hafifçe sallanır; hareket azaltılmışsa sabit durur.
 class Logo extends StatefulWidget {
-  final double size;
+  final double size; // yaklaşık yazı yüksekliği; görsel genişliği buna göre ölçeklenir
   final bool animate;
   const Logo({super.key, this.size = 44, this.animate = true});
   @override
@@ -380,52 +380,32 @@ class Logo extends StatefulWidget {
 }
 
 class _LogoState extends State<Logo> with SingleTickerProviderStateMixin {
-  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 2400))..repeat();
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 3200))..repeat();
   @override
   void dispose() {
     _c.dispose();
     super.dispose();
   }
 
-  Widget _word(String w, Color face, List<Color> extrude, int offset) {
+  @override
+  Widget build(BuildContext context) {
     final reduce = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var i = 0; i < w.length; i++)
-          AnimatedBuilder(
-            animation: _c,
-            builder: (_, child) {
-              final dy = (!widget.animate || reduce) ? 0.0 : sin(_c.value * pi * 2 + (i + offset) * .55) * widget.size * .06;
-              return Transform.translate(offset: Offset(0, dy), child: child);
-            },
-            child: Stack(children: [
-              for (var k = extrude.length; k >= 1; k--)
-                Transform.translate(
-                  offset: Offset(0, k * widget.size * .045),
-                  child: Text(w[i], style: T.display(widget.size, color: extrude[k - 1], height: .95)),
-                ),
-              Text(w[i], style: T.display(widget.size, color: face, height: .95)),
-            ]),
-          ),
-      ],
+    final w = widget.size * 5.6;
+    return Semantics(
+      header: true,
+      label: 'ÇILGIN KAFALAR!',
+      child: ExcludeSemantics(
+        child: AnimatedBuilder(
+          animation: _c,
+          builder: (_, child) {
+            final t = (!widget.animate || reduce) ? 0.0 : _c.value * pi * 2;
+            return Transform.rotate(angle: sin(t) * .025, child: Transform.scale(scale: 1 + sin(t * 2) * .015, child: child));
+          },
+          child: Image.asset('assets/images/logo.webp', width: w, fit: BoxFit.contain, filterQuality: FilterQuality.medium),
+        ),
+      ),
     );
   }
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-        header: true,
-        label: 'ÇILGIN KAFALAR!',
-        child: ExcludeSemantics(
-          child: Transform.rotate(
-            angle: -4 * pi / 180,
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              _word('ÇILGIN', K.sun, const [Color(0xFFF1A72C), Color(0xFFE0891F), K.violet7, K.violet7, Color(0xFF3B2794)], 0),
-              _word('KAFALAR!', K.paper, const [Color(0xFFE6DAFF), Color(0xFFB9A6F2), K.violet7, K.violet7, Color(0xFF3B2794)], 6),
-            ]),
-          ),
-        ),
-      );
 }
 
 class Avatar extends StatelessWidget {
@@ -489,28 +469,132 @@ class Avatar extends StatelessWidget {
   }
 }
 
-/// Oyun içi harf klavyesi (sistem klavyesi ve form alanları yerine).
-class GameKeyboard extends StatelessWidget {
-  final String keys;
+/// Oyun içi klavye. Türkçe Q düzeni (takma ad) ve karışmayan karakterli kod düzeni.
+/// Tuşlar parmak değdiği anda tepki verir; basılan harf tuşun üstünde büyük bir balonla görünür.
+/// `⌫` silme, ` ` boşluk tuşudur.
+class GameKeyboard extends StatefulWidget {
+  final List<String> rows;
   final void Function(String) onKey;
   final VoidCallback onBack;
   final VoidCallback? onSpace;
-  const GameKeyboard({super.key, required this.keys, required this.onKey, required this.onBack, this.onSpace});
+  const GameKeyboard({super.key, required this.rows, required this.onKey, required this.onBack, this.onSpace});
+
+  /// Türkçe Q klavye (telefonlardaki sıra).
+  static const turkishQ = ['QWERTYUIOPĞÜ', 'ASDFGHJKLŞİ', 'ZXCVBNMÖÇ⌫'];
+
+  /// Oda kodu: 0/O, 1/I/L karışmasın diye bu karakterler yok.
+  static const roomCode = ['23456789', 'QWERTYUP', 'ASDFGHJK', 'ZXCVBNM⌫'];
+
+  @override
+  State<GameKeyboard> createState() => _GameKeyboardState();
+}
+
+class _GameKeyboardState extends State<GameKeyboard> {
+  String? _down;
+  Rect? _downRect;
+  static const gap = 5.0, keyH = 48.0, rowGap = 8.0;
+
+  void _fire(String k) {
+    tapFeedback(context);
+    if (k == '⌫') {
+      widget.onBack();
+    } else if (k == ' ') {
+      widget.onSpace?.call();
+    } else {
+      widget.onKey(k);
+    }
+  }
+
+  Widget _key(String k, Rect r) {
+    final isBack = k == '⌫', isSpace = k == ' ';
+    final down = _down == k && _downRect == r;
+    final face = isBack ? K.pink : isSpace ? const Color(0xFFB9A6F2) : const Color(0xFFF2ECFF);
+    return Positioned.fromRect(
+      rect: r,
+      child: Semantics(
+        button: true,
+        label: isBack ? 'Sil' : isSpace ? 'Boşluk' : k,
+        child: Listener(
+          onPointerDown: (_) => setState(() {
+            _down = k;
+            _downRect = r;
+          }),
+          onPointerUp: (_) {
+            if (_down == k) _fire(k);
+            setState(() => _down = null);
+          },
+          onPointerCancel: (_) => setState(() => _down = null),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 60),
+            margin: EdgeInsets.only(top: down ? 3 : 0, bottom: down ? 0 : 3),
+            decoration: BoxDecoration(
+              color: down ? Color.lerp(face, K.violet5, .25) : face,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: [BoxShadow(color: K.edge(face), offset: Offset(0, down ? 0 : 3))],
+            ),
+            alignment: Alignment.center,
+            child: isBack
+                ? const GameIcon(GI.backspace, color: K.ink, size: 22)
+                : isSpace
+                    ? Text('boşluk', style: T.body(15, color: K.ink, w: 900))
+                    : FittedBox(child: Padding(padding: const EdgeInsets.symmetric(horizontal: 2), child: Text(k, style: T.display(21, color: K.ink)))),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final items = <Widget>[
-      for (final k in keys.split(''))
-        GameButton(onTap: () => onKey(k), color: const Color(0xFFEDE4FF), height: 40, depth: 4, radius: 12, hPad: 0, semanticLabel: k,
-            child: Text(k, style: T.display(19, color: K.ink))),
-      if (onSpace != null)
-        GameButton(onTap: onSpace, color: const Color(0xFFB9A6F2), height: 40, depth: 4, radius: 12, hPad: 0, semanticLabel: 'Boşluk',
-            child: Container(width: 18, height: 4, decoration: BoxDecoration(color: K.ink, borderRadius: BorderRadius.circular(2)))),
-      GameButton(onTap: onBack, color: K.pink, height: 40, depth: 4, radius: 12, hPad: 0, semanticLabel: 'Sil', child: const GameIcon(GI.backspace, color: K.ink, size: 20)),
-    ];
+    final rows = [...widget.rows, if (widget.onSpace != null) ' '];
     return LayoutBuilder(builder: (_, c) {
-      const cols = 8, gap = 6.0;
-      final w = (c.maxWidth - gap * (cols - 1)) / cols;
-      return Wrap(spacing: gap, runSpacing: 6, children: [for (final i in items) SizedBox(width: w, child: i)]);
+      final W = c.maxWidth;
+      final maxKeys = widget.rows.map((r) => r.characters.length).reduce((a, b) => a > b ? a : b);
+      final kw = (W - gap * (maxKeys - 1)) / maxKeys;
+      final keys = <Widget>[];
+      for (var ri = 0; ri < rows.length; ri++) {
+        final chars = rows[ri].characters.toList();
+        final y = ri * (keyH + rowGap);
+        if (chars.length == 1 && chars.first == ' ') {
+          final w = kw * 6 + gap * 5;
+          keys.add(_key(' ', Rect.fromLTWH((W - w) / 2, y, w, keyH)));
+          continue;
+        }
+        // silme tuşu 1,5 genişlikte
+        final units = chars.fold<double>(0, (s, k) => s + (k == '⌫' ? 1.5 : 1));
+        final rowW = units * kw + gap * (chars.length - 1);
+        var x = (W - rowW) / 2;
+        for (final k in chars) {
+          final w = k == '⌫' ? kw * 1.5 : kw;
+          keys.add(_key(k, Rect.fromLTWH(x, y, w, keyH)));
+          x += w + gap;
+        }
+      }
+      final h = rows.length * (keyH + rowGap) - rowGap;
+      return SizedBox(
+        height: h,
+        child: Stack(clipBehavior: Clip.none, children: [
+          ...keys,
+          if (_down != null && _downRect != null && _down != '⌫' && _down != ' ')
+            Positioned(
+              left: _downRect!.center.dx - 30,
+              top: _downRect!.top - 66,
+              child: IgnorePointer(
+                child: Container(
+                  width: 60,
+                  height: 62,
+                  decoration: BoxDecoration(
+                    color: K.paper,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: const [BoxShadow(color: Color(0xFF3B2794), offset: Offset(0, 4)), BoxShadow(color: Color(0x66080420), blurRadius: 12)],
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(_down!, style: T.display(34, color: K.ink)),
+                ),
+              ),
+            ),
+        ]),
+      );
     });
   }
 }

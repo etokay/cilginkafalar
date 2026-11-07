@@ -4,6 +4,7 @@ import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'art/mascot.dart';
 import 'fx/flame_layers.dart';
 import 'game/engine.dart';
 import 'theme.dart';
@@ -41,10 +42,14 @@ class _CilginKafalarAppState extends State<CilginKafalarApp> {
       'S07': () => engine.jump(Scr.intro),
       'S08': () => engine.jump(Scr.round, type: RoundType.knowing),
       'S09': () => engine.jump(Scr.round, type: RoundType.fact),
-      'S10': () => engine.jump(Scr.round, type: RoundType.shamata),
+      'S10': () => engine.jump(Scr.round, type: RoundType.memo),
       'S11': () => engine.jump(Scr.result),
       'S12': () => engine.jump(Scr.finale),
       'S13': () => engine.jump(Scr.settings),
+      'COGUNLUK': () => engine.jump(Scr.round, type: RoundType.majority),
+      'TAHMIN': () => engine.jump(Scr.round, type: RoundType.estimate),
+      'SIRALA': () => engine.jump(Scr.round, type: RoundType.order),
+      'YILDIZ': () => engine.jump(Scr.round, type: RoundType.starRain),
     };
     (jumps[q] ?? engine.startSplash)();
   }
@@ -55,6 +60,8 @@ class _CilginKafalarAppState extends State<CilginKafalarApp> {
     super.dispose();
   }
 
+  bool _precached = false;
+
   @override
   Widget build(BuildContext context) => GameScope(
         engine: engine,
@@ -62,7 +69,13 @@ class _CilginKafalarAppState extends State<CilginKafalarApp> {
           title: 'ÇILGIN KAFALAR!',
           debugShowCheckedModeBanner: false,
           theme: buildTheme(),
-          home: const Stage(),
+          home: Builder(builder: (c) {
+            if (!_precached) {
+              _precached = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) => precacheMascots(c));
+            }
+            return const Stage();
+          }),
         ),
       );
 }

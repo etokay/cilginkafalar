@@ -193,37 +193,3 @@ class _IconPainter extends CustomPainter {
   @override
   bool shouldRepaint(_IconPainter o) => o.i != i || o.col != col;
 }
-
-/// Uçan ada (ana menü ve açılış).
-class IslandPainter extends CustomPainter {
-  @override
-  void paint(Canvas c, Size z) {
-    c.save();
-    c.scale(z.width / 300, z.height / 200);
-    final rock = Path()
-      ..moveTo(30, 88)
-      ..quadraticBezierTo(150, 114, 270, 88)
-      ..quadraticBezierTo(252, 146, 190, 166)
-      ..quadraticBezierTo(160, 196, 128, 170)
-      ..quadraticBezierTo(62, 150, 30, 88)
-      ..close();
-    c.drawPath(rock, Paint()..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter,
-        colors: [Color(0xFF6A4ACF), Color(0xFF241A5C)]).createShader(rock.getBounds()));
-    c.drawPath(Path()..moveTo(120, 150)..lineTo(130, 180)..lineTo(138, 154)..moveTo(170, 150)..lineTo(176, 172)..lineTo(182, 152), Paint()..color = const Color(0xFF3B2794));
-    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(222, 94, 11, 80), const Radius.circular(5)),
-        Paint()..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [K.sky, Color(0x0044C9F8)]).createShader(const Rect.fromLTWH(222, 94, 11, 80)));
-    const grassR = Rect.fromLTWH(28, 66, 244, 44);
-    c.drawOval(grassR, Paint()..shader = const LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [Color(0xFF6FF0C9), Color(0xFF1FA79A)]).createShader(grassR));
-    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(66, 56, 6, 22), const Radius.circular(3)), Paint()..color = const Color(0xFF5B3A22));
-    c.drawCircle(const Offset(69, 50), 16, Paint()..color = K.pink);
-    c.drawCircle(const Offset(63, 45), 5, Paint()..color = const Color(0xFFFFC7E3));
-    c.drawRRect(RRect.fromRectAndRadius(const Rect.fromLTWH(236, 60, 5, 18), const Radius.circular(2.5)), Paint()..color = const Color(0xFF5B3A22));
-    c.drawCircle(const Offset(238, 54), 13, Paint()..color = K.sun);
-    c.drawCircle(const Offset(200, 80), 4, Paint()..color = K.sun);
-    c.drawCircle(const Offset(104, 82), 3.5, Paint()..color = K.pink);
-    c.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}

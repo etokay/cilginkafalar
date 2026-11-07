@@ -2,6 +2,7 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:flame/components.dart';
+import 'package:flame/events.dart';
 import 'package:flame/game.dart';
 import 'package:flame/particles.dart';
 
@@ -19,35 +20,37 @@ Path _star(double r) {
   return p..close();
 }
 
-/// Arka plan: gece moru gökyüzü, parlayan yıldızlar, yavaş süzülen adacıklar.
+/// Arka plan: üretilmiş gökyüzü görseli (bg_sky.webp) + üstünde hafifçe parlayan yıldızlar.
 class SkyGame extends FlameGame {
   bool reduceMotion = false;
+  Sprite? bg;
   @override
   Color backgroundColor() => K.navy;
 
   @override
   Future<void> onLoad() async {
+    bg = await Sprite.load('bg_sky.webp');
     add(_Backdrop());
     add(_StarField());
-    for (var i = 0; i < 4; i++) {
-      add(_Drifter(i));
-    }
   }
 }
 
 class _Backdrop extends Component with HasGameReference<SkyGame> {
   @override
   void render(Canvas c) {
-    final r = Offset.zero & Size(game.size.x, game.size.y);
-    c.drawRect(r, Paint()
-      ..shader = Gradient.linear(r.topCenter, r.bottomCenter, const [Color(0xFF2D2378), K.navy, Color(0xFF1C1450)], const [0, .46, 1]));
-    c.drawOval(Rect.fromCenter(center: Offset(game.size.x * .1, game.size.y * .95), width: 260, height: 80), Paint()..color = const Color(0x803B2C8F));
-    c.drawOval(Rect.fromCenter(center: Offset(game.size.x * .9, game.size.y * 1.0), width: 300, height: 100), Paint()..color = const Color(0x733B2C8F));
+    final sp = game.bg;
+    if (sp == null) return;
+    // "cover" yerleşim: ekranı tamamen kaplar, oranı korur.
+    final src = sp.srcSize, dst = game.size;
+    final scale = max(dst.x / src.x, dst.y / src.y);
+    final w = src.x * scale, h = src.y * scale;
+    sp.render(c, position: Vector2((dst.x - w) / 2, (dst.y - h) / 2), size: Vector2(w, h));
+    c.drawRect(Offset.zero & Size(dst.x, dst.y), Paint()..color = const Color(0x4D160F3B));
   }
 }
 
 class _StarField extends Component with HasGameReference<SkyGame> {
-  final _stars = List.generate(56, (_) => (_r(0, 1), _r(0, .72), _r(.6, 1.9), _r(0, pi * 2)));
+  final _stars = List.generate(26, (_) => (_r(0, 1), _r(0, .6), _r(.6, 1.6), _r(0, pi * 2)));
   double t = 0;
   @override
   void update(double dt) {
@@ -56,46 +59,103 @@ class _StarField extends Component with HasGameReference<SkyGame> {
 
   @override
   void render(Canvas c) {
-    final p = Paint()..color = const Color(0xFFFFFFFF);
+    final p = Paint();
     for (final s in _stars) {
-      final a = .35 + .45 * (0.5 + 0.5 * sin(t * 1.6 + s.$4));
+      final a = .2 + .5 * (0.5 + 0.5 * sin(t * 1.6 + s.$4));
       p.color = Color.fromRGBO(255, 255, 255, a);
       c.drawCircle(Offset(s.$1 * game.size.x, s.$2 * game.size.y), s.$3, p);
     }
   }
 }
 
-class _Drifter extends PositionComponent with HasGameReference<SkyGame> {
-  final int i;
-  late double speed;
-  _Drifter(this.i);
+/// Şamata mini oyunu: düşen yıldızlara dokun. Sarı yıldız 1, altın yıldız 3 puan.
+class StarRainGame extends FlameGame {
+  final void Function(int points) onCatch;
+  bool running = false, reduceMotion = false;
+  late Sprite _starSprite, _goldSprite;
+  double _spawn = 0;
+  StarRainGame({required this.onCatch});
+
   @override
-  void onMount() {
-    super.onMount();
-    position = Vector2(_r(0, game.size.x), game.size.y * (.14 + i * .17));
-    speed = _r(4, 10) * (i.isEven ? 1 : -1);
-    size = Vector2(_r(36, 64), 0);
+  Color backgroundColor() => const Color(0x00000000);
+
+  @override
+  Future<void> onLoad() async {
+    _starSprite = await Sprite.load('star.webp');
+    _goldSprite = await Sprite.load('star_gold.webp');
   }
 
   @override
   void update(double dt) {
-    if (game.reduceMotion) return;
-    x += speed * dt;
-    if (x > game.size.x + 80) x = -80;
-    if (x < -80) x = game.size.x + 80;
+    super.update(dt);
+    if (!running || size.x == 0) return;
+    _spawn -= dt;
+    if (_spawn <= 0) {
+      _spawn = _r(.32, .55);
+      final gold = _rng.nextDouble() < .15;
+      final s = gold ? 74.0 : 60.0;
+      add(_FallingStar(
+        sprite: gold ? _goldSprite : _starSprite,
+        points: gold ? 3 : 1,
+        position: Vector2(_r(s / 2 + 6, size.x - s / 2 - 6), -s),
+        size: Vector2.all(s),
+        speed: (gold ? _r(230, 300) : _r(130, 220)) * (reduceMotion ? .65 : 1),
+      ));
+    }
+  }
+
+  void stop() {
+    running = false;
+    children.whereType<_FallingStar>().toList().forEach((c) => c.removeFromParent());
+  }
+
+  void burst(Vector2 at, bool gold) {
+    add(ParticleSystemComponent(
+      position: at,
+      particle: Particle.generate(
+        count: gold ? 18 : 10,
+        lifespan: .5,
+        generator: (i) {
+          final a = i / (gold ? 18 : 10) * pi * 2;
+          return AcceleratedParticle(
+            speed: Vector2(cos(a), sin(a)) * _r(120, 220),
+            child: ComputedParticle(renderer: (c, p) {
+              c.drawPath(_star(6 * (1 - p.progress) + 2), Paint()..color = (gold ? K.orange : K.sun).withValues(alpha: 1 - p.progress));
+            }),
+          );
+        },
+      ),
+    ));
+  }
+}
+
+class _FallingStar extends SpriteComponent with TapCallbacks, HasGameReference<StarRainGame> {
+  final int points;
+  final double speed;
+  final double _spin = _r(-1.5, 1.5);
+  _FallingStar({required Sprite sprite, required this.points, required Vector2 position, required Vector2 size, required this.speed})
+      : super(sprite: sprite, position: position, size: size, anchor: Anchor.center);
+
+  @override
+  void update(double dt) {
+    y += speed * dt;
+    angle += _spin * dt;
+    if (y > game.size.y + size.y) removeFromParent();
   }
 
   @override
-  void render(Canvas c) {
-    final w = size.x;
-    final p = Path()
-      ..moveTo(-w / 2, 0)
-      ..quadraticBezierTo(0, -w * .32, w / 2, 0)
-      ..quadraticBezierTo(w * .2, w * .5, 0, w * .55)
-      ..quadraticBezierTo(-w * .2, w * .5, -w / 2, 0)
-      ..close();
-    c.drawPath(p, Paint()..color = const Color(0x664A3AA8));
-    c.drawOval(Rect.fromCenter(center: Offset.zero, width: w, height: w * .22), Paint()..color = const Color(0x5535D9C9));
+  bool containsLocalPoint(Vector2 point) {
+    // Parmak için geniş dokunma alanı (görselden %25 büyük).
+    final c = size / 2;
+    return point.distanceTo(c) <= size.x * .62;
+  }
+
+  @override
+  void onTapDown(TapDownEvent event) {
+    if (!game.running) return;
+    game.onCatch(points);
+    game.burst(position.clone(), points > 1);
+    removeFromParent();
   }
 }
 

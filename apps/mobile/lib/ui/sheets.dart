@@ -144,7 +144,6 @@ class TestPanel extends StatelessWidget {
           padding: const EdgeInsets.only(right: 6, bottom: 6),
           child: GameButton(
             semanticLabel: t,
-            child: Text(t, style: T.body(14, color: on ? K.ink : K.paper, w: 900)),
             expand: false,
             height: 36,
             depth: 3,
@@ -155,13 +154,18 @@ class TestPanel extends StatelessWidget {
               f();
               onDone?.call();
             },
+            child: Text(t, style: T.body(14, color: on ? K.ink : K.paper, w: 900)),
           ),
         );
     final jumps = <(String, VoidCallback)>[
       for (final e in screenNames.entries.where((e) => e.key.index <= Scr.intro.index)) (e.value, () => g.jump(e.key)),
       ('S08 Beni ne kadar tanıyorsun?', () => g.jump(Scr.round, type: RoundType.knowing)),
       ('S09 Gerçek mi uydurma mı?', () => g.jump(Scr.round, type: RoundType.fact)),
-      ('S10 Şamata turu', () => g.jump(Scr.round, type: RoundType.shamata)),
+      ('S10 Şamata: hafıza', () => g.jump(Scr.round, type: RoundType.memo)),
+      ('S10b Şamata: yıldız yağmuru', () => g.jump(Scr.round, type: RoundType.starRain)),
+      ('S08b Çoğunluk ne dedi?', () => g.jump(Scr.round, type: RoundType.majority)),
+      ('S09b Yakın tahmin', () => g.jump(Scr.round, type: RoundType.estimate)),
+      ('S09c Sırala!', () => g.jump(Scr.round, type: RoundType.order)),
       (screenNames[Scr.result]!, () => g.jump(Scr.result)),
       (screenNames[Scr.finale]!, () => g.jump(Scr.finale)),
       (screenNames[Scr.settings]!, () => g.jump(Scr.settings)),

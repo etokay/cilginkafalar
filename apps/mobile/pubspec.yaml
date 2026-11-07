@@ -18,6 +18,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/mascots/
+    - assets/images/
   fonts:
     - family: Baloo2
       fonts:

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../art/mascot_painter.dart';
+import '../art/mascot.dart';
 import '../art/shapes.dart';
 import '../data/content.dart';
 import '../game/engine.dart';
@@ -25,7 +25,7 @@ class SplashScreen extends StatelessWidget {
         width: 300,
         height: 250,
         child: Stack(children: [
-          Positioned.fill(top: 60, child: CustomPaint(painter: IslandPainter())),
+          Positioned.fill(top: 60, child: Image.asset('assets/images/island.webp', fit: BoxFit.contain)),
           const Positioned(left: 60, bottom: 66, child: Mascot('pof', mood: Mood.happy, size: 180)),
         ]),
       ),
@@ -94,7 +94,7 @@ class MenuScreen extends StatelessWidget {
       SizedBox(
         height: 250,
         child: Stack(alignment: Alignment.center, children: [
-          Positioned(bottom: 0, width: 300, height: 200, child: CustomPaint(painter: IslandPainter())),
+          Positioned(bottom: 0, width: 310, height: 230, child: Image.asset('assets/images/island.webp', fit: BoxFit.contain)),
           const Positioned(bottom: 70, child: Mascot('pof', mood: Mood.happy, size: 180)),
           const Positioned(left: 0, bottom: 110, child: Mascot('bidik', size: 84)),
           const Positioned(right: 0, bottom: 124, child: Mascot('zipzip', size: 80)),
@@ -141,9 +141,6 @@ class LinkText extends StatelessWidget {
 }
 
 // ---------------- S04 Oda kur / katıl ----------------
-const _trKeys = 'ABCÇDEFGĞHIİJKLMNOÖPRSŞTUÜVYZ';
-const _codeKeys = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-
 String trTitle(String s) => s
     .split(' ')
     .map((w) => w.isEmpty ? w : w[0] + w.substring(1).replaceAll('I', 'ı').replaceAll('İ', 'i').toLowerCase())
@@ -160,19 +157,49 @@ class _RoomScreenState extends State<RoomScreen> {
   int step = 0; // katıl: 0 kod, 1 takma ad
   String? err;
   int shakeKey = 0;
+  final _focus = FocusNode(debugLabel: 'oda-klavye');
 
   @override
   void initState() {
     super.initState();
-    final g = GameScope.read(context);
-    nickRaw = g.nick.toUpperCase();
+    nickRaw = GameScope.read(context).nick.toUpperCase();
+    WidgetsBinding.instance.addPostFrameCallback((_) => mounted ? _focus.requestFocus() : null);
+  }
+
+  @override
+  void dispose() {
+    _focus.dispose();
+    super.dispose();
   }
 
   String get nick => trTitle(nickRaw.trim());
+  bool get _codeStep => !GameScope.read(context).creating && step == 0;
 
   void _fail(String m) => setState(() {
         err = m;
         shakeKey++;
+      });
+
+  void _type(String k) => setState(() {
+        err = null;
+        if (_codeStep) {
+          if (code.length < 6) code += k;
+        } else if (nickRaw.length < 16) {
+          nickRaw += k;
+        }
+      });
+
+  void _space() => setState(() {
+        if (nickRaw.isNotEmpty && !nickRaw.endsWith(' ') && nickRaw.length < 16) nickRaw += ' ';
+      });
+
+  void _back() => setState(() {
+        err = null;
+        if (_codeStep) {
+          if (code.isNotEmpty) code = code.substring(0, code.length - 1);
+        } else if (nickRaw.isNotEmpty) {
+          nickRaw = nickRaw.substring(0, nickRaw.length - 1);
+        }
       });
 
   void _submit(GameEngine g) {
@@ -190,100 +217,140 @@ class _RoomScreenState extends State<RoomScreen> {
     g.confirmRoom(nick, code);
   }
 
+  /// Bilgisayar ya da bluetooth klavyesiyle yazma.
+  KeyEventResult _onKey(FocusNode _, KeyEvent e) {
+    if (e is! KeyDownEvent && e is! KeyRepeatEvent) return KeyEventResult.ignored;
+    final k = e.logicalKey;
+    if (k == LogicalKeyboardKey.backspace || k == LogicalKeyboardKey.delete) {
+      _back();
+      return KeyEventResult.handled;
+    }
+    if (k == LogicalKeyboardKey.enter || k == LogicalKeyboardKey.numpadEnter) {
+      _submit(GameScope.read(context));
+      return KeyEventResult.handled;
+    }
+    final ch = e.character;
+    if (ch == null || ch.length != 1) return KeyEventResult.ignored;
+    if (ch == ' ') {
+      if (!_codeStep) _space();
+      return KeyEventResult.handled;
+    }
+    final up = ch == 'i' ? 'İ' : ch == 'ı' ? 'I' : ch.toUpperCase();
+    final allowed = (_codeStep ? GameKeyboard.roomCode : GameKeyboard.turkishQ).join().replaceAll('⌫', '');
+    if (allowed.contains(up)) {
+      _type(up);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   @override
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
     final codeStep = !g.creating && step == 0;
-    return Column(children: [
-      TopBar(
-        left: IconTap(GI.back, label: 'Geri', onTap: () {
-          if (!g.creating && step == 1) {
-            setState(() => step = 0);
-          } else {
-            g.go(Scr.menu);
-          }
-        }),
-        title: g.creating ? 'Oda kur' : 'Odaya katıl',
-      ),
-      _Tabs(creating: g.creating, onChange: (c) {
-        setState(() {
-          step = 0;
-          err = null;
-        });
-        g.openRoom(c);
-      }),
-      const SizedBox(height: 16),
-      if (g.creating)
-        GPanel(
-          padding: const EdgeInsets.all(12),
-          child: Row(children: [
-            const Mascot('pika', size: 64),
-            const SizedBox(width: 10),
-            Expanded(child: Text('Odayı sen kurarsın, sen de oynarsın. Kodu arkadaşlarınla paylaşman yeter.', style: T.body(14, color: K.lilac))),
-          ]),
+    final roomy = MediaQuery.sizeOf(context).height > 780;
+    const kbHeight = 4 * 56.0 - 8;
+    return Focus(
+      focusNode: _focus,
+      onKeyEvent: _onKey,
+      child: Column(children: [
+        TopBar(
+          left: IconTap(GI.back, label: 'Geri', onTap: () {
+            if (!g.creating && step == 1) {
+              setState(() => step = 0);
+            } else {
+              g.go(Scr.menu);
+            }
+          }),
+          title: g.creating ? 'Oda kur' : 'Odaya katıl',
         ),
-      if (g.creating) const SizedBox(height: 14),
-      Align(
-        alignment: Alignment.centerLeft,
-        child: Text(codeStep ? 'Oda kodu' : 'Takma adın', style: T.display(18)),
-      ),
-      const SizedBox(height: 8),
-      Shake(
-        key: ValueKey(shakeKey),
-        active: shakeKey > 0,
-        child: codeStep
-            ? LetterSlots(code, error: err != null)
-            : Row(children: [
-                Expanded(child: _NamePlate(nickRaw.isEmpty ? '' : nick, error: err != null)),
-                const SizedBox(width: 10),
-                IconTap(GI.dice, label: 'Rastgele takma ad öner', size: 62, color: K.violet5, onTap: () {
-                  setState(() {
-                    nickRaw = g.randomNick().toUpperCase();
-                    err = null;
-                  });
-                }),
-              ]),
-      ),
-      const SizedBox(height: 8),
-      SizedBox(
-        height: 40,
-        child: err != null
-            ? Row(children: [
-                const GameIcon(GI.warn, size: 18),
-                const SizedBox(width: 6),
-                Expanded(child: Semantics(liveRegion: true, child: Text(err!, style: T.body(13, color: const Color(0xFFFFB3C1), w: 800)))),
-              ])
-            : Text(codeStep ? 'Kodu oda sahibinden al. 6 harf ve rakamdan oluşur.' : '2–16 karakter. Gerçek adını yazmana gerek yok.',
-                style: T.body(13, color: K.lilac)),
-      ),
-      const Spacer(),
-      GameKeyboard(
-        keys: codeStep ? _codeKeys : _trKeys,
-        onKey: (k) => setState(() {
-          err = null;
-          if (codeStep) {
-            if (code.length < 6) code += k;
-          } else if (nickRaw.length < 16) {
-            nickRaw += k;
-          }
+        _Tabs(creating: g.creating, onChange: (c) {
+          setState(() {
+            step = 0;
+            err = null;
+          });
+          g.openRoom(c);
         }),
-        onSpace: codeStep
-            ? null
-            : () => setState(() {
-                  if (nickRaw.isNotEmpty && !nickRaw.endsWith(' ') && nickRaw.length < 16) nickRaw += ' ';
-                }),
-        onBack: () => setState(() {
-          err = null;
-          if (codeStep) {
-            if (code.isNotEmpty) code = code.substring(0, code.length - 1);
-          } else if (nickRaw.isNotEmpty) {
-            nickRaw = nickRaw.substring(0, nickRaw.length - 1);
-          }
-        }),
-      ),
-      const SizedBox(height: 14),
-      GameButton(label: g.creating ? 'ODA KUR' : codeStep ? 'DEVAM' : 'KATIL', onTap: () => _submit(g)),
-    ]);
+        const SizedBox(height: 14),
+        if (g.creating && roomy) ...[
+          GPanel(
+            padding: const EdgeInsets.all(10),
+            child: Row(children: [
+              const Mascot('pika', size: 56),
+              const SizedBox(width: 10),
+              Expanded(child: Text('Odayı sen kurarsın, sen de oynarsın. Kodu arkadaşlarınla paylaşman yeter.', style: T.body(14, color: K.lilac))),
+            ]),
+          ),
+          const SizedBox(height: 12),
+        ],
+        if (!g.creating)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+              for (var i = 0; i < 2; i++)
+                Container(
+                  width: i == step ? 30 : 18,
+                  height: 7,
+                  margin: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(color: i <= step ? K.sun : K.lilac.withValues(alpha: .25), borderRadius: BorderRadius.circular(4)),
+                ),
+            ]),
+          ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Text(codeStep ? 'Oda kodu' : 'Takma adın', style: T.display(18)),
+        ),
+        const SizedBox(height: 8),
+        Shake(
+          key: ValueKey(shakeKey),
+          active: shakeKey > 0,
+          child: codeStep
+              ? LetterSlots(code, error: err != null)
+              : Row(children: [
+                  Expanded(child: _NamePlate(nickRaw.isEmpty ? '' : nick, error: err != null)),
+                  const SizedBox(width: 10),
+                  IconTap(GI.dice, label: 'Rastgele takma ad öner', size: 62, color: K.violet5, onTap: () {
+                    setState(() {
+                      nickRaw = g.randomNick().toUpperCase();
+                      err = null;
+                    });
+                  }),
+                ]),
+        ),
+        const SizedBox(height: 8),
+        SizedBox(
+          height: 40,
+          child: err != null
+              ? Row(children: [
+                  const GameIcon(GI.warn, size: 18),
+                  const SizedBox(width: 6),
+                  Expanded(child: Semantics(liveRegion: true, child: Text(err!, style: T.body(13, color: const Color(0xFFFFB3C1), w: 800)))),
+                ])
+              : Text(
+                  codeStep ? 'Kodu oda sahibinden al. 6 harf ve rakamdan oluşur.' : '2–16 karakter. Gerçek adını yazma; zarla rastgele ad da seçebilirsin.',
+                  style: T.body(13, color: K.lilac)),
+        ),
+        const Spacer(),
+        LayoutBuilder(
+          builder: (_, c) => SizedBox(
+            width: c.maxWidth,
+            height: kbHeight,
+            child: OverflowBox(
+              minWidth: c.maxWidth + 28,
+              maxWidth: c.maxWidth + 28,
+              child: GameKeyboard(
+                rows: codeStep ? GameKeyboard.roomCode : GameKeyboard.turkishQ,
+                onKey: _type,
+                onSpace: codeStep ? null : _space,
+                onBack: _back,
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        GameButton(label: g.creating ? 'ODA KUR' : codeStep ? 'DEVAM' : 'KATIL', onTap: () => _submit(g)),
+      ]),
+    );
   }
 }
 

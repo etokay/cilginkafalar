@@ -1,27 +1,38 @@
 import 'dart:math';
 
+import 'package:flame/game.dart';
 import 'package:flutter/material.dart';
 
-import '../art/mascot_painter.dart';
+import '../art/mascot.dart';
 import '../art/shapes.dart';
 import '../data/content.dart';
+import '../fx/flame_layers.dart';
 import '../game/engine.dart';
 import '../theme.dart';
 import 'screens_entry.dart';
 import 'sheets.dart';
 import 'widgets.dart';
 
-String catName(RoundType t) => switch (t) {
-      RoundType.knowing => 'Beni ne kadar tanıyorsun?',
-      RoundType.fact => 'Gerçek mi uydurma mı?',
-      RoundType.shamata => 'Şamata turu',
+String catName(RoundType t) => t.title;
+
+Color catColor(RoundType t) => switch (t.category) {
+      Category.knowing => K.pink,
+      Category.info => K.sky,
+      Category.shamata => K.orange,
     };
 
-Color catColor(RoundType t) => switch (t) {
-      RoundType.knowing => K.pink,
-      RoundType.fact => K.sky,
-      RoundType.shamata => K.orange,
-    };
+SymShape answerShapesFor(int i) => const [SymShape.circle, SymShape.triangle, SymShape.square, SymShape.star][i % 4];
+
+String fmtNum(double v) {
+  final n = v.round();
+  final s = '${n.abs()}';
+  final b = StringBuffer(n < 0 ? '-' : '');
+  for (var i = 0; i < s.length; i++) {
+    if (i > 0 && (s.length - i) % 3 == 0) b.write('.');
+    b.write(s[i]);
+  }
+  return b.toString();
+}
 
 Widget _roundPills(GameEngine g, {Widget? right}) => SizedBox(
       height: 60,
@@ -44,10 +55,13 @@ class IntroScreen extends StatelessWidget {
     final tgt = r.targetId == null ? null : g.playerById(r.targetId!);
     final line = switch (r.type) {
       RoundType.knowing => tgt!.isMe ? 'Bu tur arkadaşların seni tahmin edecek.' : '${tgt.nick} ne cevap verdi, tahmin et.',
+      RoundType.majority => 'Odadakilerin çoğu ne seçti? Kalabalığı tahmin et.',
       RoundType.fact => 'Bu bilgi gerçek mi, uydurma mı?',
-      RoundType.shamata => 'Ekrana iyi bak, sonra soruyu cevapla.',
+      RoundType.estimate => 'Sayıyı tahmin et. En yakın tahmin en çok puanı alır.',
+      RoundType.order => 'Dört şeyi doğru sıraya diz.',
+      RoundType.memo => 'Ekrana iyi bak, sonra soruyu cevapla.',
+      RoundType.starRain => 'Düşen yıldızlara dokun! Altın yıldız 3 sayar.',
     };
-    final mascot = switch (r.type) { RoundType.knowing => 'pika', RoundType.fact => 'minti', RoundType.shamata => 'cakir' };
     final col = catColor(r.type);
     return Column(children: [
       SizedBox(height: 60, child: Row(children: [Pill('Tur ${g.roundIndex + 1}/12'), const Spacer(), Pill('${g.me?.score ?? 0} puan')])),
@@ -60,15 +74,19 @@ class IntroScreen extends StatelessWidget {
             builder: (_, v, c) => Transform.scale(scale: .5 + .5 * v, child: Transform.rotate(angle: (1 - v) * -.2, child: c)),
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(22, 20, 22, 28),
+              padding: const EdgeInsets.fromLTRB(22, 18, 22, 28),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(32),
                 gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color.lerp(col, Colors.white, .2)!, K.edge(col)]),
                 boxShadow: [BoxShadow(color: K.edge(K.edge(col)), offset: const Offset(0, 8))],
               ),
               child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Mascot(mascot, mood: Mood.happy, size: 170),
-                Semantics(header: true, liveRegion: true, child: Text(catName(r.type), textAlign: TextAlign.center, style: T.display(34, height: 1).copyWith(shadows: const [Shadow(color: Color(0x5920173D), offset: Offset(0, 3))]))),
+                Mascot(r.type.mascot, mood: Mood.happy, size: 190),
+                Semantics(
+                  header: true,
+                  liveRegion: true,
+                  child: Text(catName(r.type), textAlign: TextAlign.center, style: T.display(34, height: 1).copyWith(shadows: const [Shadow(color: Color(0x5920173D), offset: Offset(0, 3))])),
+                ),
                 const SizedBox(height: 10),
                 Text(line, textAlign: TextAlign.center, style: T.body(17, color: K.ink, w: 800)),
               ]),
@@ -87,7 +105,7 @@ class RoundScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final g = GameScope.of(context);
     final r = g.round!;
-    final timer = r.memorizing ? null : TimerRing(remaining: g.remaining(r), total: r.duration.toDouble());
+    final timer = r.memorizing ? const SizedBox(width: 58) : TimerRing(remaining: g.remaining(r), total: r.duration.toDouble());
     final mine = r.answers['me'];
     final locked = mine != null;
     final el = g.eligible(r);
@@ -135,6 +153,12 @@ class RoundScreen extends StatelessWidget {
             ),
         ];
 
+    Widget hostLine(String mascot, Mood mood, String text) => Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Mascot(mascot, mood: mood, size: 92),
+          const SizedBox(width: 6),
+          Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 16), child: Text(text, style: T.body(15, color: K.lilac)))),
+        ]);
+
     switch (r.type) {
       case RoundType.knowing:
         final t = g.playerById(r.targetId!);
@@ -169,7 +193,7 @@ class RoundScreen extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(4, 4, 16, 4),
             decoration: BoxDecoration(color: K.pink.withValues(alpha: .2), borderRadius: BorderRadius.circular(999), border: Border.all(color: K.pink.withValues(alpha: .5), width: 2)),
             child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Mascot(t.mascot, mood: Mood.think, size: 40),
+              Mascot(t.mascot, mood: Mood.think, size: 44),
               const SizedBox(width: 8),
               Text('${t.nick} cevapladı, sen tahmin et', style: T.body(15, w: 900)),
             ]),
@@ -180,6 +204,18 @@ class RoundScreen extends StatelessWidget {
           grid(tiles()),
           const Spacer(),
           locked ? lockBar : Text('Bir cevap seç. İlk seçimin geçerli olur.', style: T.body(14, color: K.lilac)),
+          const SizedBox(height: 14),
+          strip,
+        ]);
+      case RoundType.majority:
+        return Column(children: [
+          _roundPills(g, right: timer),
+          hostLine('bidik', locked ? Mood.happy : Mood.think, 'Herkes bu soruyu cevapladı. Sence çoğunluk hangisini seçti?'),
+          SizedBox(width: double.infinity, child: QuestionCard(r.prompt, size: 21)),
+          const SizedBox(height: 18),
+          grid(tiles()),
+          const Spacer(),
+          if (locked) lockBar,
           const SizedBox(height: 14),
           strip,
         ]);
@@ -197,26 +233,39 @@ class RoundScreen extends StatelessWidget {
             );
         return Column(children: [
           _roundPills(g, right: timer),
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Mascot('minti', mood: locked ? Mood.happy : Mood.think, size: 96),
-            const SizedBox(width: 6),
-            Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 18), child: Text('Minti bir bilgi buldu. Sence doğru mu?', style: T.body(15, color: K.lilac)))),
-          ]),
+          hostLine('minti', locked ? Mood.happy : Mood.think, 'Minti bir bilgi buldu. Sence doğru mu?'),
           SizedBox(width: double.infinity, child: QuestionCard(r.prompt, size: 26, padding: const EdgeInsets.fromLTRB(20, 32, 20, 34))),
           const SizedBox(height: 20),
-          SizedBox(
-            height: 128,
-            child: Row(children: [tf(0, 'GERÇEK', GI.check, 1), const SizedBox(width: 12), tf(1, 'UYDURMA', GI.cross, 2)]),
-          ),
+          SizedBox(height: 128, child: Row(children: [tf(0, 'GERÇEK', GI.check, 1), const SizedBox(width: 12), tf(1, 'UYDURMA', GI.cross, 2)])),
           const Spacer(),
           if (locked) lockBar,
           const SizedBox(height: 14),
           strip,
         ]);
-      case RoundType.shamata:
+      case RoundType.estimate:
+        return Column(children: [
+          _roundPills(g, right: timer),
+          hostLine('zipzip', locked ? Mood.happy : Mood.think, 'Tam sayıyı bilemesen de olur. En yakın tahmin kazanır.'),
+          SizedBox(width: double.infinity, child: QuestionCard(r.prompt, size: 22)),
+          const SizedBox(height: 16),
+          Expanded(child: _EstimatePad(r: r, locked: locked, onSubmit: (v) => g.answer('me', 0, value: v))),
+          if (locked) ...[lockBar, const SizedBox(height: 14)],
+          strip,
+        ]);
+      case RoundType.order:
+        return Column(children: [
+          _roundPills(g, right: timer),
+          hostLine('pof', locked ? Mood.happy : Mood.think, 'Sırayla dokun: önce ilk gelen. Yanlış dokunursan tekrar dokunup geri al.'),
+          SizedBox(width: double.infinity, child: QuestionCard(r.prompt, size: 22)),
+          const SizedBox(height: 14),
+          Expanded(child: _OrderPicker(r: r, locked: locked, onSubmit: (o) => g.answer('me', 0, order: o))),
+          if (locked) ...[lockBar, const SizedBox(height: 14)],
+          strip,
+        ]);
+      case RoundType.memo:
         if (r.memorizing) {
           return Column(children: [
-            _roundPills(g, right: const SizedBox(width: 58)),
+            _roundPills(g, right: timer),
             Text('Ekrana iyi bak!', style: T.display(28)),
             Text('3 saniye sonra kaybolacaklar.', style: T.body(15, color: K.lilac)),
             const SizedBox(height: 14),
@@ -240,11 +289,7 @@ class RoundScreen extends StatelessWidget {
         }
         return Column(children: [
           _roundPills(g, right: timer),
-          Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Mascot('cakir', mood: locked ? Mood.happy : Mood.think, size: 90),
-            const SizedBox(width: 6),
-            Expanded(child: Padding(padding: const EdgeInsets.only(bottom: 16), child: Text('Hafızanı yokla! En hızlı doğru cevap en çok puanı alır.', style: T.body(15, color: K.lilac)))),
-          ]),
+          hostLine('cakir', locked ? Mood.happy : Mood.think, 'Hafızanı yokla! En hızlı doğru cevap en çok puanı alır.'),
           SizedBox(width: double.infinity, child: QuestionCard(r.prompt)),
           const SizedBox(height: 18),
           grid(tiles(markers: r.optionSymbols?.map((s) => SymbolIcon(s.shape, color: s.color, size: 24) as Widget).toList())),
@@ -253,11 +298,242 @@ class RoundScreen extends StatelessWidget {
           const SizedBox(height: 14),
           strip,
         ]);
+      case RoundType.starRain:
+        return Column(children: [
+          _roundPills(g, right: timer),
+          Row(children: [
+            Mascot('cakir', mood: r.memorizing ? Mood.surprised : Mood.happy, size: 64),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Yıldızlara dokun! Altın yıldız 3 sayar.', style: T.body(15, color: K.lilac))),
+            Semantics(
+              liveRegion: true,
+              label: '${r.liveStars} yıldız puanı',
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(color: K.sun, borderRadius: BorderRadius.circular(16), boxShadow: [BoxShadow(color: K.edge(K.sun), offset: const Offset(0, 4))]),
+                child: Row(mainAxisSize: MainAxisSize.min, children: [
+                  Image.asset('assets/images/star.webp', width: 26),
+                  const SizedBox(width: 6),
+                  Text('${r.liveStars}', style: T.display(24, color: K.ink)),
+                ]),
+              ),
+            ),
+          ]),
+          const SizedBox(height: 10),
+          Expanded(child: _StarRainView(r: r)),
+          const SizedBox(height: 12),
+          strip,
+        ]);
     }
   }
 }
 
-SymShape answerShapesFor(int i) => const [SymShape.circle, SymShape.triangle, SymShape.square, SymShape.star][i % 4];
+/// Yakın tahmin: büyük sayı, sürüklenebilir çizgi ve +/- tuşları.
+class _EstimatePad extends StatefulWidget {
+  final Round r;
+  final bool locked;
+  final ValueChanged<double> onSubmit;
+  const _EstimatePad({required this.r, required this.locked, required this.onSubmit});
+  @override
+  State<_EstimatePad> createState() => _EstimatePadState();
+}
+
+class _EstimatePadState extends State<_EstimatePad> {
+  late double v;
+  Estimate get e => widget.r.estimate!;
+
+  @override
+  void initState() {
+    super.initState();
+    v = ((e.min + e.max) / 2 / e.step).round() * e.step;
+    final mine = widget.r.answers['me']?.value;
+    if (mine != null) v = mine;
+  }
+
+  void _set(double x) => setState(() => v = ((x / e.step).round() * e.step).clamp(e.min, e.max));
+
+  @override
+  Widget build(BuildContext context) {
+    final big = (e.max - e.min) / e.step > 60;
+    final steps = big ? [-10 * e.step, -e.step, e.step, 10 * e.step] : [-5 * e.step, -e.step, e.step, 5 * e.step];
+    return Column(children: [
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(color: const Color(0x59080420), borderRadius: BorderRadius.circular(22)),
+        child: Semantics(
+          liveRegion: true,
+          label: 'Tahminin ${fmtNum(v)} ${e.unit}',
+          child: ExcludeSemantics(
+            child: Column(children: [
+              Text(fmtNum(v), style: T.display(52, color: K.sun, height: 1).copyWith(fontFeatures: const [FontFeature.tabularFigures()])),
+              Text(e.unit, style: T.body(15, color: K.lilac, w: 800)),
+            ]),
+          ),
+        ),
+      ),
+      const SizedBox(height: 14),
+      LayoutBuilder(builder: (_, c) {
+        double toV(double x) => e.min + (x / c.maxWidth).clamp(0, 1) * (e.max - e.min);
+        return Semantics(
+          slider: true,
+          value: fmtNum(v),
+          increasedValue: fmtNum(min(e.max, v + e.step)),
+          decreasedValue: fmtNum(max(e.min, v - e.step)),
+          onIncrease: widget.locked ? null : () => _set(v + e.step),
+          onDecrease: widget.locked ? null : () => _set(v - e.step),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragUpdate: widget.locked ? null : (d) => _set(toV(d.localPosition.dx)),
+            onTapDown: widget.locked ? null : (d) => _set(toV(d.localPosition.dx)),
+            child: SizedBox(height: 48, width: c.maxWidth, child: CustomPaint(painter: _SliderPainter((v - e.min) / (e.max - e.min)))),
+          ),
+        );
+      }),
+      const SizedBox(height: 12),
+      Row(children: [
+        for (final (i, s) in steps.indexed) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: GameButton(
+              label: '${s > 0 ? '+' : '−'}${fmtNum(s.abs())}',
+              height: 46,
+              depth: 4,
+              radius: 16,
+              hPad: 0,
+              color: const Color(0xFF3A2D86),
+              textColor: K.paper,
+              onTap: widget.locked ? null : () => _set(v + s),
+            ),
+          ),
+        ],
+      ]),
+      const Spacer(),
+      if (!widget.locked) GameButton(label: 'TAHMİNİ KİLİTLE', onTap: () => widget.onSubmit(v)),
+    ]);
+  }
+}
+
+class _SliderPainter extends CustomPainter {
+  final double f;
+  _SliderPainter(this.f);
+  @override
+  void paint(Canvas c, Size s) {
+    final y = s.height / 2;
+    final track = RRect.fromRectAndRadius(Rect.fromLTWH(0, y - 7, s.width, 14), const Radius.circular(7));
+    c.drawRRect(track, Paint()..color = const Color(0x66080420));
+    c.drawRRect(RRect.fromRectAndRadius(Rect.fromLTWH(0, y - 7, s.width * f.clamp(0, 1), 14), const Radius.circular(7)),
+        Paint()..shader = const LinearGradient(colors: [K.orange, K.sun]).createShader(track.outerRect));
+    final x = (s.width * f).clamp(16.0, s.width - 16);
+    c.drawCircle(Offset(x, y + 3), 17, Paint()..color = K.edge(K.sun));
+    c.drawCircle(Offset(x, y), 17, Paint()..color = K.sun);
+    c.drawCircle(Offset(x, y), 17, Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..color = K.ink);
+  }
+
+  @override
+  bool shouldRepaint(_SliderPainter o) => o.f != f;
+}
+
+/// Sırala: dört kartı sırayla seç; seçilen kartta sıra numarası görünür.
+class _OrderPicker extends StatefulWidget {
+  final Round r;
+  final bool locked;
+  final ValueChanged<List<int>> onSubmit;
+  const _OrderPicker({required this.r, required this.locked, required this.onSubmit});
+  @override
+  State<_OrderPicker> createState() => _OrderPickerState();
+}
+
+class _OrderPickerState extends State<_OrderPicker> {
+  late List<int> picked = List.of(widget.r.answers['me']?.order ?? const []);
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.r;
+    return Column(children: [
+      for (var i = 0; i < r.options.length; i++)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: AnswerTile(
+            index: i,
+            text: r.options[i],
+            selected: picked.contains(i),
+            marker: picked.contains(i) ? Text('${picked.indexOf(i) + 1}', style: T.display(22, color: K.ink)) : null,
+            onTap: widget.locked
+                ? null
+                : () => setState(() {
+                      if (picked.contains(i)) {
+                        picked.remove(i);
+                      } else if (picked.length < 4) {
+                        picked.add(i);
+                      }
+                    }),
+          ),
+        ),
+      const Spacer(),
+      if (!widget.locked)
+        GameButton(label: picked.length < 4 ? 'SIRAYI SEÇ (${picked.length}/4)' : 'SIRAYI GÖNDER', onTap: picked.length == 4 ? () => widget.onSubmit(picked) : null),
+    ]);
+  }
+}
+
+/// Flame yıldız yağmuru alanı.
+class _StarRainView extends StatefulWidget {
+  final Round r;
+  const _StarRainView({required this.r});
+  @override
+  State<_StarRainView> createState() => _StarRainViewState();
+}
+
+class _StarRainViewState extends State<_StarRainView> {
+  late final StarRainGame game = StarRainGame(onCatch: (p) => GameScope.read(context).catchStar(p));
+
+  @override
+  Widget build(BuildContext context) {
+    final g = GameScope.of(context);
+    final r = widget.r;
+    game.reduceMotion = g.settings.reduceMotion;
+    final active = !r.memorizing && !r.revealed && g.remaining(r) > 0;
+    if (active != game.running) {
+      if (active) {
+        game.running = true;
+      } else {
+        game.stop();
+      }
+    }
+    final count = r.memorizing && r.memoStart != null ? (3 - DateTime.now().difference(r.memoStart!).inMilliseconds ~/ 1000).clamp(1, 3) : 0;
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(26),
+      child: Stack(children: [
+        Positioned.fill(child: Container(decoration: BoxDecoration(color: const Color(0x55080420), border: Border.all(color: K.lilac.withValues(alpha: .2), width: 2), borderRadius: BorderRadius.circular(26)))),
+        Positioned.fill(
+          child: Semantics(
+            label: 'Yıldız yağmuru oyun alanı. Düşen yıldızlara dokun.',
+            child: GameWidget(game: game),
+          ),
+        ),
+        if (r.memorizing)
+          Positioned.fill(
+            child: Center(
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                Text('Hazır ol!', style: T.display(30)),
+                TweenAnimationBuilder<double>(
+                  key: ValueKey(count),
+                  tween: Tween(begin: 1.6, end: 1),
+                  duration: const Duration(milliseconds: 400),
+                  builder: (_, s, c) => Transform.scale(scale: s, child: c),
+                  child: Text('$count', style: T.display(90, color: K.sun, height: 1)),
+                ),
+              ]),
+            ),
+          ),
+      ]),
+    );
+  }
+}
 
 // ---------------- S11 Tur sonucu ----------------
 class ResultScreen extends StatelessWidget {
@@ -267,58 +543,45 @@ class ResultScreen extends StatelessWidget {
     final g = GameScope.of(context);
     final r = g.round!;
     final my = r.answers['me'];
+    final myGain = r.gain['me'] ?? 0;
     final iAmTarget = r.type == RoundType.knowing && r.targetId == 'me';
-    final ok = my != null && my.index == r.correct;
+    final ok = r.isRight(my);
     final el = g.eligible(r);
-    final (head, mood) = iAmTarget
-        ? ((r.gain['me'] ?? 0) > 0 ? ('${r.right} kişi seni bildi, +30 puan!', Mood.happy) : ('${r.right}/${el.length} kişi seni bildi', Mood.surprised))
-        : ok
-            ? ('Doğru! +${r.gain['me']} puan', Mood.happy)
-            : my != null
-                ? ('Bu sefer olmadı. Puan kaybetmedin.', Mood.sad)
-                : ('Süre doldu. Bir sonraki turda yakala!', Mood.sad);
-    final answerText = r.type == RoundType.fact ? (r.factTrue! ? 'Gerçek' : 'Uydurma') : r.options[r.correct];
-    final ex = r.type == RoundType.knowing ? '${g.playerById(r.targetId!).nick} bunu seçmişti. ${r.right}/${el.length} kişi bildi.' : r.explanation ?? '';
-    final Widget icon = r.type == RoundType.fact
-        ? GameIcon(r.factTrue! ? GI.check : GI.cross, color: K.ink, size: 22)
-        : r.optionSymbols != null
-            ? SymbolIcon(r.optionSymbols![r.correct].shape, color: r.optionSymbols![r.correct].color, size: 24)
-            : SymbolIcon(answerShapesFor(r.correct), size: 22);
+
+    String head;
+    Mood mood;
+    if (iAmTarget) {
+      (head, mood) = myGain > 0 ? ('${r.right} kişi seni bildi, +30 puan!', Mood.happy) : ('${r.right}/${el.length} kişi seni bildi', Mood.surprised);
+    } else if (my == null) {
+      (head, mood) = ('Süre doldu. Bir sonraki turda yakala!', Mood.sad);
+    } else if (r.type == RoundType.estimate) {
+      final tier = r.estimateTier(my.value ?? -1e9);
+      head = const ['Bu sefer uzak kaldın.', 'Fena değil!', 'Yakın!', 'Çok yakın!', 'Tam isabet!'][tier] + (myGain > 0 ? ' +$myGain puan' : '');
+      mood = tier >= 3 ? Mood.victory : tier >= 1 ? Mood.happy : Mood.sad;
+    } else if (r.type == RoundType.order) {
+      final n = r.correctPositions(my.order);
+      head = n == 4 ? 'Kusursuz sıra! +$myGain puan' : '$n/4 doğru yer${myGain > 0 ? ', +$myGain puan' : ''}';
+      mood = n == 4 ? Mood.victory : n >= 2 ? Mood.happy : Mood.sad;
+    } else if (r.type == RoundType.starRain) {
+      head = '${my.value?.round() ?? 0} yıldız puanı! +$myGain';
+      mood = myGain >= 100 ? Mood.victory : myGain > 0 ? Mood.happy : Mood.sad;
+    } else if (ok) {
+      (head, mood) = ('Doğru! +$myGain puan', Mood.happy);
+    } else {
+      (head, mood) = ('Bu sefer olmadı. Puan kaybetmedin.', Mood.sad);
+    }
+
     final sorted = [...g.players]..sort((a, b) => b.score.compareTo(a.score));
     return Column(children: [
-      SizedBox(height: 60, child: Row(children: [Pill('Tur ${g.roundIndex + 1}/12'), const SizedBox(width: 8), const Pill('Tur sonucu')])),
+      SizedBox(height: 60, child: Row(children: [Pill('Tur ${g.roundIndex + 1}/12'), const SizedBox(width: 8), Flexible(child: Pill(catName(r.type), color: catColor(r.type).withValues(alpha: .28)))])),
       Row(children: [
-        Mascot(g.mascot, mood: mood, size: 84),
+        Mascot(g.mascot, mood: mood, size: 92),
         const SizedBox(width: 12),
         Expanded(child: Semantics(liveRegion: true, child: Text(head, style: T.display(24)))),
       ]),
       const SizedBox(height: 10),
-      Shake(
-        active: !ok && !iAmTarget,
-        child: Container(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(color: K.paper, borderRadius: BorderRadius.circular(22), boxShadow: const [BoxShadow(color: Color(0xFF3B2794), offset: Offset(0, 5))]),
-          child: Row(children: [
-            Container(
-              width: 50,
-              height: 50,
-              decoration: BoxDecoration(shape: BoxShape.circle, color: r.type == RoundType.fact ? (r.factTrue! ? K.aqua : K.pink) : const Color(0xFFEFE6FF)),
-              alignment: Alignment.center,
-              child: icon,
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Text('Doğru cevap', style: T.body(13, color: const Color(0xFF5B4C8F), w: 800)),
-                Text(answerText, style: T.display(24, color: K.ink)),
-                const SizedBox(height: 2),
-                Text(ex, style: T.body(14, color: const Color(0xFF4A3F78))),
-              ]),
-            ),
-          ]),
-        ),
-      ),
-      const SizedBox(height: 18),
+      Shake(active: my != null && !ok && !iAmTarget && myGain == 0, child: _RevealCard(r: r, g: g)),
+      const SizedBox(height: 16),
       Align(alignment: Alignment.centerLeft, child: Text('Puan durumu', style: T.display(16, color: K.lilac))),
       const SizedBox(height: 8),
       for (final (i, p) in sorted.indexed)
@@ -332,6 +595,111 @@ class ResultScreen extends StatelessWidget {
         child: Text('${g.roundIndex == 11 ? 'Final' : 'Sonraki tur'} ${g.resultCountdown} sn içinde', style: T.body(15, color: K.lilac)),
       ),
     ]);
+  }
+}
+
+class _RevealCard extends StatelessWidget {
+  final Round r;
+  final GameEngine g;
+  const _RevealCard({required this.r, required this.g});
+
+  Widget _card(Widget child) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: K.paper, borderRadius: BorderRadius.circular(22), boxShadow: const [BoxShadow(color: Color(0xFF3B2794), offset: Offset(0, 5))]),
+        child: child,
+      );
+
+  Widget _simple(Widget icon, Color iconBg, String label, String big, String ex) => _card(Row(children: [
+        Container(width: 50, height: 50, decoration: BoxDecoration(shape: BoxShape.circle, color: iconBg), alignment: Alignment.center, child: icon),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(label, style: T.body(13, color: const Color(0xFF5B4C8F), w: 800)),
+            Text(big, style: T.display(24, color: K.ink)),
+            if (ex.isNotEmpty) Text(ex, style: T.body(14, color: const Color(0xFF4A3F78))),
+          ]),
+        ),
+      ]));
+
+  @override
+  Widget build(BuildContext context) {
+    final el = g.eligible(r);
+    final my = r.answers['me'];
+    switch (r.type) {
+      case RoundType.fact:
+        return _simple(GameIcon(r.factTrue! ? GI.check : GI.cross, color: K.ink, size: 22), r.factTrue! ? K.aqua : K.pink, 'Doğru cevap',
+            r.factTrue! ? 'Gerçek' : 'Uydurma', r.explanation ?? '');
+      case RoundType.knowing:
+        return _simple(SymbolIcon(answerShapesFor(r.correct), size: 22), const Color(0xFFEFE6FF), 'Doğru cevap', r.options[r.correct],
+            '${g.playerById(r.targetId!).nick} bunu seçmişti. ${r.right}/${el.length} kişi bildi.');
+      case RoundType.memo:
+        final s = r.optionSymbols?[r.correct];
+        return _simple(s != null ? SymbolIcon(s.shape, color: s.color, size: 24) : SymbolIcon(answerShapesFor(r.correct), size: 22),
+            const Color(0xFFEFE6FF), 'Doğru cevap', r.options[r.correct], r.explanation ?? '');
+      case RoundType.estimate:
+        final e = r.estimate!;
+        return _simple(Text('≈', style: T.display(28, color: K.ink)), K.sun, 'Doğru cevap', '${fmtNum(e.answer)} ${e.unit}',
+            '${my?.value != null ? 'Senin tahminin: ${fmtNum(my!.value!)}. ' : ''}${e.explanation}');
+      case RoundType.majority:
+        final votes = r.votes!;
+        final total = votes.fold(0, (a, b) => a + b);
+        return _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Oylar (${g.players.length} kişi)', style: T.body(13, color: const Color(0xFF5B4C8F), w: 800)),
+          const SizedBox(height: 6),
+          for (var i = 0; i < 4; i++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 3),
+              child: Row(children: [
+                SymbolIcon(answerShapesFor(i), color: K.answer[i], size: 18),
+                const SizedBox(width: 8),
+                SizedBox(width: 110, child: Text(r.options[i], maxLines: 1, overflow: TextOverflow.ellipsis, style: T.body(14, color: K.ink, w: r.correctSet.contains(i) ? 900 : 700))),
+                Expanded(
+                  child: LayoutBuilder(
+                    builder: (_, c) => Align(
+                      alignment: Alignment.centerLeft,
+                      child: TweenAnimationBuilder<double>(
+                        tween: Tween(begin: 0, end: total == 0 ? 0 : votes[i] / total),
+                        duration: const Duration(milliseconds: 700),
+                        curve: Curves.easeOut,
+                        builder: (_, f, _) => Container(
+                          width: max(6, c.maxWidth * f),
+                          height: 16,
+                          decoration: BoxDecoration(color: r.correctSet.contains(i) ? K.answer[i] : K.answer[i].withValues(alpha: .35), borderRadius: BorderRadius.circular(8)),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text('${votes[i]}', style: T.display(18, color: K.ink)),
+              ]),
+            ),
+          const SizedBox(height: 4),
+          Text(r.correctSet.length > 1 ? 'Berabere çıkan seçenekler doğru sayıldı.' : '${r.right}/${el.length} kişi çoğunluğu bildi.', style: T.body(13, color: const Color(0xFF4A3F78))),
+        ]));
+      case RoundType.order:
+        final correct = r.correctOrder!;
+        return _card(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('Doğru sıra', style: T.body(13, color: const Color(0xFF5B4C8F), w: 800)),
+          const SizedBox(height: 4),
+          for (var k = 0; k < 4; k++)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(children: [
+                Text('${k + 1}.', style: T.display(18, color: K.ink)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(r.options[correct[k]], style: T.body(16, color: K.ink, w: 900))),
+                if (my?.order != null)
+                  GameIcon(my!.order![k] == correct[k] ? GI.check : GI.cross, color: my.order![k] == correct[k] ? const Color(0xFF1F9E92) : K.error, size: 18),
+              ]),
+            ),
+          Text(r.explanation ?? '', style: T.body(13, color: const Color(0xFF4A3F78))),
+        ]));
+      case RoundType.starRain:
+        final best = g.players.map((p) => (p, r.answers[p.id]?.value ?? 0)).reduce((a, b) => a.$2 >= b.$2 ? a : b);
+        return _simple(Image.asset('assets/images/star_gold.webp', width: 34), K.sun, 'En çok yıldız toplayan', best.$1.label, '${best.$2.round()} yıldız puanı');
+    }
   }
 }
 
