@@ -143,7 +143,8 @@ class TestPanel extends StatelessWidget {
     Widget chip(String t, VoidCallback f, {bool on = false}) => Padding(
           padding: const EdgeInsets.only(right: 6, bottom: 6),
           child: GameButton(
-            label: t,
+            semanticLabel: t,
+            child: Text(t, style: T.body(14, color: on ? K.ink : K.paper, w: 900)),
             expand: false,
             height: 36,
             depth: 3,

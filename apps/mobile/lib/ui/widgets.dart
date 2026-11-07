@@ -115,7 +115,7 @@ class _GameButtonState extends State<GameButton> with SingleTickerProviderStateM
                     painter: _BtnPainter(face, widget.radius, d, widget.depth, widget.selected, _focus),
                     child: Padding(
                       padding: EdgeInsets.only(top: widget.depth - d, bottom: d, left: widget.hPad, right: widget.hPad),
-                      child: Center(child: child),
+                      child: Center(widthFactor: widget.expand ? null : 1, child: child),
                     ),
                   ),
                 );
