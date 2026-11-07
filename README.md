@@ -67,7 +67,7 @@ Katılım ekranında `DOLU66`, `BASLAD`, `ESKI99` kodları hata durumlarını g�
 
 ```bash
 cd apps/mobile
-flutter build web --release --no-web-resources-cdn --pwa-strategy=none
+./tool/build_web.sh   # derler; main.dart.js her yayında içerik özetli yeni ad alır (önbellek kırma)
 ```
 
 `build/web` klasörü Hostinger'daki `cilginkafalar.io` sitesinin `public_html` dizinine yüklenir. `web/.htaccess` önbellek ve wasm türü ayarlarını içerir.
